@@ -14,17 +14,17 @@ local lockedPlayer = nil
 local minimized = false
 local crosshairEnabled = true
 
+-- Silent-aim-style target selector (game-native; no raycast hooks)
+local silentAimEnabled = false
+local silentAimFOV = 130
+local silentAimFOVVisible = true
+
 -- Accepted-target mode
 local acceptedMode = false
 local acceptedPlayers = {}
 
 -- Current cycling index
 local currentIndex = 0
-
--- Prediction / silent-aim-style target selection
-local prediction = 0
-local silentAimEnabled = false
-local silentAimFOV = 130
 
 -- Highlight currently selected player
 local currentHighlight = nil
@@ -70,12 +70,40 @@ vertical.BorderSizePixel = 0
 vertical.Parent = crosshair
 
 --------------------------------------------------
+-- SILENT AIM FOV VISUALIZER
+--------------------------------------------------
+
+local fovCircle = Instance.new("Frame")
+fovCircle.Name = "SilentAimFOVCircle"
+fovCircle.Size = UDim2.fromOffset(silentAimFOV * 2, silentAimFOV * 2)
+fovCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+fovCircle.Position = UDim2.fromScale(0.5, 0.5)
+fovCircle.BackgroundTransparency = 1
+fovCircle.BorderSizePixel = 0
+fovCircle.Visible = silentAimFOVVisible
+fovCircle.Parent = gui
+
+local fovAspect = Instance.new("UIAspectRatioConstraint")
+fovAspect.AspectRatio = 1
+fovAspect.Parent = fovCircle
+
+local fovCorner = Instance.new("UICorner")
+fovCorner.CornerRadius = UDim.new(1, 0)
+fovCorner.Parent = fovCircle
+
+local fovStroke = Instance.new("UIStroke")
+fovStroke.Thickness = 2
+fovStroke.Transparency = 0.15
+fovStroke.Color = Color3.fromRGB(255, 255, 255)
+fovStroke.Parent = fovCircle
+
+--------------------------------------------------
 -- MAIN FRAME
 --------------------------------------------------
 
 local frame = Instance.new("Frame")
 frame.Name = "AimMenu"
-frame.Size = UDim2.fromOffset(350, 500)
+frame.Size = UDim2.fromOffset(350, 410)
 frame.Position = UDim2.new(0, 25, 0.5, -180)
 frame.BackgroundColor3 = Color3.fromRGB(15, 15, 19)
 frame.BorderSizePixel = 0
@@ -150,15 +178,11 @@ miniVertical.Parent = minimizeButton
 -- CONTENT
 --------------------------------------------------
 
-local content = Instance.new("ScrollingFrame")
+local content = Instance.new("Frame")
 content.Name = "Content"
 content.Size = UDim2.new(1, -30, 1, -63)
 content.Position = UDim2.fromOffset(15, 55)
 content.BackgroundTransparency = 1
-content.BorderSizePixel = 0
-content.ScrollBarThickness = 5
-content.ScrollingDirection = Enum.ScrollingDirection.Y
-content.CanvasSize = UDim2.fromOffset(0, 0)
 content.Parent = frame
 
 --------------------------------------------------
@@ -253,306 +277,182 @@ local acceptedButton = createButton("ACCEPTED TARGETS: OFF", 153)
 local crosshairButton = createButton("CROSSHAIR: ON", 203)
 
 --------------------------------------------------
--- PREDICTION SLIDER
---------------------------------------------------
-
-local predictionLabel = Instance.new("TextLabel")
-predictionLabel.Size = UDim2.new(1, 0, 0, 24)
-predictionLabel.Position = UDim2.fromOffset(0, 253)
-predictionLabel.BackgroundTransparency = 1
-predictionLabel.Text = "PREDICTION: 0.00"
-predictionLabel.TextSize = 15
-predictionLabel.Font = Enum.Font.GothamBold
-predictionLabel.TextColor3 = Color3.fromRGB(225, 225, 230)
-predictionLabel.TextXAlignment = Enum.TextXAlignment.Left
-predictionLabel.Parent = content
-
-local predictionBar = Instance.new("Frame")
-predictionBar.Name = "PredictionBar"
-predictionBar.Size = UDim2.new(1, 0, 0, 10)
-predictionBar.Position = UDim2.fromOffset(0, 283)
-predictionBar.BackgroundColor3 = Color3.fromRGB(31, 31, 38)
-predictionBar.BorderSizePixel = 0
-predictionBar.Active = true
-predictionBar.Parent = content
-
-local predictionBarCorner = Instance.new("UICorner")
-predictionBarCorner.CornerRadius = UDim.new(1, 0)
-predictionBarCorner.Parent = predictionBar
-
-local predictionFill = Instance.new("Frame")
-predictionFill.Size = UDim2.new(0, 0, 1, 0)
-predictionFill.BackgroundColor3 = Color3.fromRGB(70, 170, 95)
-predictionFill.BorderSizePixel = 0
-predictionFill.Parent = predictionBar
-
-local predictionFillCorner = Instance.new("UICorner")
-predictionFillCorner.CornerRadius = UDim.new(1, 0)
-predictionFillCorner.Parent = predictionFill
-
-local predictionKnob = Instance.new("TextButton")
-predictionKnob.Name = "PredictionKnob"
-predictionKnob.Text = ""
-predictionKnob.AutoButtonColor = false
-predictionKnob.Size = UDim2.fromOffset(22, 22)
-predictionKnob.AnchorPoint = Vector2.new(0.5, 0.5)
-predictionKnob.Position = UDim2.new(0, 0, 0.5, 0)
-predictionKnob.BackgroundColor3 = Color3.fromRGB(235, 235, 240)
-predictionKnob.BorderSizePixel = 0
-predictionKnob.Active = true
-predictionKnob.Parent = predictionBar
-
-local predictionKnobCorner = Instance.new("UICorner")
-predictionKnobCorner.CornerRadius = UDim.new(1, 0)
-predictionKnobCorner.Parent = predictionKnob
-
-local predictionDragging = false
-local predictionTouch = nil
-
-local function setPredictionFromX(x)
-    local width = predictionBar.AbsoluteSize.X
-    if width <= 0 then return end
-
-    local relative = math.clamp(
-        (x - predictionBar.AbsolutePosition.X) / width,
-        0,
-        1
-    )
-
-    prediction = relative
-    predictionLabel.Text = string.format("PREDICTION: %.2f", prediction)
-    predictionFill.Size = UDim2.new(prediction, 0, 1, 0)
-    predictionKnob.Position = UDim2.new(prediction, 0, 0.5, 0)
-end
-
-predictionBar.InputBegan:Connect(function(input)
-    if minimized or not content.Visible then return end
-
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        predictionDragging = true
-        predictionTouch = nil
-        setPredictionFromX(input.Position.X)
-    elseif input.UserInputType == Enum.UserInputType.Touch then
-        predictionDragging = true
-        predictionTouch = input
-        setPredictionFromX(input.Position.X)
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if not predictionDragging or minimized or not content.Visible then return end
-
-    if predictionTouch then
-        if input == predictionTouch then
-            setPredictionFromX(input.Position.X)
-        end
-    elseif input.UserInputType == Enum.UserInputType.MouseMovement then
-        setPredictionFromX(input.Position.X)
-    end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-        or (predictionTouch and input == predictionTouch) then
-        predictionDragging = false
-        predictionTouch = nil
-    end
-end)
-
 -- SILENT AIM SECTION
 --------------------------------------------------
 
-local silentAimButton = createButton("SILENT AIM: OFF", 323)
+local silentAimButton = createButton("SILENT AIM: OFF", 253)
+local fovVisibleButton = createButton("FOV CIRCLE: ON", 303)
 
-local silentFOVLabel = Instance.new("TextLabel")
-silentFOVLabel.Size = UDim2.new(1, 0, 0, 24)
-silentFOVLabel.Position = UDim2.fromOffset(0, 373)
-silentFOVLabel.BackgroundTransparency = 1
-silentFOVLabel.Text = "SILENT AIM FOV: 130"
-silentFOVLabel.TextSize = 15
-silentFOVLabel.Font = Enum.Font.GothamBold
-silentFOVLabel.TextColor3 = Color3.fromRGB(225, 225, 230)
-silentFOVLabel.TextXAlignment = Enum.TextXAlignment.Left
-silentFOVLabel.Parent = content
+local silentAimFOVLabel = Instance.new("TextLabel")
+silentAimFOVLabel.Size = UDim2.new(1, 0, 0, 22)
+silentAimFOVLabel.Position = UDim2.fromOffset(0, 353)
+silentAimFOVLabel.BackgroundTransparency = 1
+silentAimFOVLabel.Text = "SILENT AIM FOV: 130"
+silentAimFOVLabel.TextSize = 14
+silentAimFOVLabel.Font = Enum.Font.GothamBold
+silentAimFOVLabel.TextColor3 = Color3.fromRGB(225, 225, 230)
+silentAimFOVLabel.TextXAlignment = Enum.TextXAlignment.Left
+silentAimFOVLabel.Parent = content
 
-local silentFOVBar = Instance.new("Frame")
-silentFOVBar.Name = "SilentAimFOVBar"
-silentFOVBar.Size = UDim2.new(1, 0, 0, 10)
-silentFOVBar.Position = UDim2.fromOffset(0, 403)
-silentFOVBar.BackgroundColor3 = Color3.fromRGB(31, 31, 38)
-silentFOVBar.BorderSizePixel = 0
-silentFOVBar.Active = true
-silentFOVBar.Parent = content
+local silentAimFOVBar = Instance.new("Frame")
+silentAimFOVBar.Name = "SilentAimFOVBar"
+silentAimFOVBar.Size = UDim2.new(1, 0, 0, 8)
+silentAimFOVBar.Position = UDim2.fromOffset(0, 379)
+silentAimFOVBar.BackgroundColor3 = Color3.fromRGB(31, 31, 38)
+silentAimFOVBar.BorderSizePixel = 0
+silentAimFOVBar.Active = true
+silentAimFOVBar.Parent = content
 
-local silentFOVCorner = Instance.new("UICorner")
-silentFOVCorner.CornerRadius = UDim.new(1, 0)
-silentFOVCorner.Parent = silentFOVBar
+local silentAimFOVFill = Instance.new("Frame")
+silentAimFOVFill.Size = UDim2.new(silentAimFOV / 360, 0, 1, 0)
+silentAimFOVFill.BackgroundColor3 = Color3.fromRGB(70, 170, 95)
+silentAimFOVFill.BorderSizePixel = 0
+silentAimFOVFill.Parent = silentAimFOVBar
 
-local silentFOVFill = Instance.new("Frame")
-silentFOVFill.Size = UDim2.new(silentAimFOV / 360, 0, 1, 0)
-silentFOVFill.BackgroundColor3 = Color3.fromRGB(70, 170, 95)
-silentFOVFill.BorderSizePixel = 0
-silentFOVFill.Parent = silentFOVBar
+local silentAimFOVKnob = Instance.new("Frame")
+silentAimFOVKnob.Size = UDim2.fromOffset(16, 16)
+silentAimFOVKnob.AnchorPoint = Vector2.new(0.5, 0.5)
+silentAimFOVKnob.Position = UDim2.new(silentAimFOV / 360, 0, 0.5, 0)
+silentAimFOVKnob.BackgroundColor3 = Color3.fromRGB(235, 235, 240)
+silentAimFOVKnob.BorderSizePixel = 0
+silentAimFOVKnob.Active = true
+silentAimFOVKnob.Parent = silentAimFOVBar
 
-local silentFOVFillCorner = Instance.new("UICorner")
-silentFOVFillCorner.CornerRadius = UDim.new(1, 0)
-silentFOVFillCorner.Parent = silentFOVFill
+local silentAimFOVDragging = false
+local silentAimTouch = nil
 
-local silentFOVKnob = Instance.new("TextButton")
-silentFOVKnob.Name = "SilentAimFOVKnob"
-silentFOVKnob.Text = ""
-silentFOVKnob.AutoButtonColor = false
-silentFOVKnob.Size = UDim2.fromOffset(22, 22)
-silentFOVKnob.AnchorPoint = Vector2.new(0.5, 0.5)
-silentFOVKnob.Position = UDim2.new(silentAimFOV / 360, 0, 0.5, 0)
-silentFOVKnob.BackgroundColor3 = Color3.fromRGB(235, 235, 240)
-silentFOVKnob.BorderSizePixel = 0
-silentFOVKnob.Active = true
-silentFOVKnob.Parent = silentFOVBar
-
-local silentFOVKnobCorner = Instance.new("UICorner")
-silentFOVKnobCorner.CornerRadius = UDim.new(1, 0)
-silentFOVKnobCorner.Parent = silentFOVKnob
-
-local silentFOVDragging = false
-local silentFOVTouch = nil
-
-local function setSilentFOVFromX(x)
-    local width = silentFOVBar.AbsoluteSize.X
+local function setSilentAimFOVFromX(x)
+    if not content.Visible then return end
+    local width = silentAimFOVBar.AbsoluteSize.X
     if width <= 0 then return end
-
-    local relative = math.clamp(
-        (x - silentFOVBar.AbsolutePosition.X) / width,
-        0,
-        1
-    )
-
+    local relative = math.clamp((x - silentAimFOVBar.AbsolutePosition.X) / width, 0, 1)
     silentAimFOV = math.floor(relative * 360 + 0.5)
-    silentFOVLabel.Text = "SILENT AIM FOV: " .. tostring(silentAimFOV)
-    silentFOVFill.Size = UDim2.new(silentAimFOV / 360, 0, 1, 0)
-    silentFOVKnob.Position = UDim2.new(silentAimFOV / 360, 0, 0.5, 0)
+    silentAimFOVLabel.Text = "SILENT AIM FOV: " .. tostring(silentAimFOV)
+    silentAimFOVFill.Size = UDim2.new(silentAimFOV / 360, 0, 1, 0)
+    silentAimFOVKnob.Position = UDim2.new(silentAimFOV / 360, 0, 0.5, 0)
+    fovCircle.Size = UDim2.fromOffset(silentAimFOV * 2, silentAimFOV * 2)
 end
 
-silentFOVBar.InputBegan:Connect(function(input)
-    if minimized or not content.Visible then return end
-
+silentAimFOVBar.InputBegan:Connect(function(input)
+    if not content.Visible then return end
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        silentFOVDragging = true
-        silentFOVTouch = nil
-        setSilentFOVFromX(input.Position.X)
+        silentAimFOVDragging = true
+        setSilentAimFOVFromX(input.Position.X)
     elseif input.UserInputType == Enum.UserInputType.Touch then
-        silentFOVDragging = true
-        silentFOVTouch = input
-        setSilentFOVFromX(input.Position.X)
+        silentAimFOVDragging = true
+        silentAimTouch = input
+        setSilentAimFOVFromX(input.Position.X)
     end
 end)
 
 UserInputService.InputChanged:Connect(function(input)
-    if not silentFOVDragging or minimized or not content.Visible then return end
-
-    if silentFOVTouch then
-        if input == silentFOVTouch then
-            setSilentFOVFromX(input.Position.X)
-        end
-    elseif input.UserInputType == Enum.UserInputType.MouseMovement then
-        setSilentFOVFromX(input.Position.X)
+    if not silentAimFOVDragging or not content.Visible then return end
+    if input.UserInputType == Enum.UserInputType.MouseMovement then
+        setSilentAimFOVFromX(input.Position.X)
+    elseif input.UserInputType == Enum.UserInputType.Touch and input == silentAimTouch then
+        setSilentAimFOVFromX(input.Position.X)
     end
 end)
 
 UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-        or (silentFOVTouch and input == silentFOVTouch) then
-        silentFOVDragging = false
-        silentFOVTouch = nil
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        silentAimFOVDragging = false
+    elseif input.UserInputType == Enum.UserInputType.Touch and input == silentAimTouch then
+        silentAimFOVDragging = false
+        silentAimTouch = nil
     end
 end)
+
+local silentAimConnection = nil
 
 silentAimButton.Activated:Connect(function()
     silentAimEnabled = not silentAimEnabled
-    silentAimButton.Text = silentAimEnabled
-        and "SILENT AIM: ON"
-        or "SILENT AIM: OFF"
-end)
 
--- Target acquisition logic
-local function getSilentAimTarget()
-    if not silentAimEnabled then return nil end
+    if silentAimEnabled then
+        silentAimButton.Text = "SILENT AIM: ON"
 
-    local camera = workspace.CurrentCamera
-    if not camera then return nil end
+        -- ==========================================
+        -- SILENT AIM ENABLED
+	local storage = game:GetService("ReplicatedStorage")
+	local youman = workspace.CurrentCamera 
+	local wow = require(storage.Modules.Utility)
 
-    local viewport = camera.ViewportSize
-    local center = Vector2.new(viewport.X * 0.5, viewport.Y * 0.5)
-    local closest = nil
-    local closestScreenDistance = silentAimFOV
+	local function rando() 
+    	local targets = {} 
+    	for _, v in ipairs(workspace:GetChildren()) do 
+        	if v:FindFirstChildOfClass("Humanoid") then 
+            	table.insert(targets, v) 
+        	elseif v.Name == "HurtEffect" then 
+            	for _, p in ipairs(v:GetChildren()) do 
+                	if p.ClassName ~= "Highlight" then table.insert(targets, p) end 
+            end 
+        end 
+    end 
+    return targets 
+end 
 
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= localPlayer and acceptedPlayers[player] then
-            local character = player.Character
-            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-            local root = character and character:FindFirstChild("HumanoidRootPart")
-
-            if humanoid and humanoid.Health > 5 and root and not deadPlayers[player] then
-                local screen, onScreen = camera:WorldToViewportPoint(root.Position)
-
-                if onScreen then
-                    local distance = (
-                        Vector2.new(screen.X, screen.Y) - center
-                    ).Magnitude
-
-                    if distance <= closestScreenDistance then
-                        closestScreenDistance = distance
-                        closest = player
-                    end
-                end
-            end
-        end
-    end
-
-    -- Return the actual physical Hitbox part (Head or HumanoidRootPart) instead of just the player instance
-    return closest and closest.Character and closest.Character:FindFirstChild("Head")
+local function thingidk(p)
+    local h = p:FindFirstChild("Head")
+    local root = p:FindFirstChild("HumanoidRootPart")
+    return (h and root) and (h.Position + (root.Velocity * 0)) or (h and h.Position)
 end
 
--- HOOKMETAMETHOD ENGINE INTERCEPTION
--- We intercept Roblox's '__namecall' method. This maps directly to functions called like game:GetService("Players") or workspace:FindPartOnRay()
-local oldNamecall
-oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-    local method = getnamecallmethod()
-    local args = {...}
+local function idk() 
+    local target, min = nil, math.huge 
+    local char = game:GetService("Players").LocalPlayer.Character 
+    if not char then return end 
+    for _, p in ipairs(rando()) do 
+        if p ~= char and p:FindFirstChild("HumanoidRootPart") then 
+            local pos = thingidk(p)
+            local screen, vis = youman:WorldToViewportPoint(pos) 
+            if vis then 
+                local mag = (Vector2.new(youman.ViewportSize.X/2, youman.ViewportSize.Y/2) - Vector2.new(screen.X, screen.Y)).Magnitude 
+                if mag < min then target, min = p, mag end 
+            end 
+        end 
+    end 
+    return target 
+end 
 
-    if silentAimEnabled and not checkcaller() then
-        -- Intercept standard Raycasting methods used by weapons
-        if method == "FindPartOnRay" or method == "FindPartOnRayWithIgnoreList" or method == "findPartOnRayWithIgnoreList" then
-            local targetPart = getSilentAimTarget()
-            if targetPart then
-                -- Override the origin and direction vector to point perfectly at the Target Head
-                local camera = workspace.CurrentCamera
-                local origin = camera.CFrame.Position
-                local direction = (targetPart.Position - origin).Unit * 5000
-                
-                -- Construct a brand new Ray targeted at our intercepted player
-                args[1] = Ray.new(origin, direction)
-                return oldNamecall(self, table.unpack(args))
-            end
-            
-        elseif method == "Raycast" then
-            local targetPart = getSilentAimTarget()
-            if targetPart then
-                local camera = workspace.CurrentCamera
-                local origin = args[1] -- Original position parameter
-                local direction = (targetPart.Position - origin).Unit * 5000
-                
-                args[2] = direction -- Override direction
-                return oldNamecall(self, table.unpack(args))
-            end
+local old = wow.Raycast 
+wow.Raycast = function(...) 
+    local args = {...} 
+    if args[4] == 999 then 
+        local target = idk() 
+        if target then 
+            local p = thingidk(target)
+            if p then args[3] = p end
+        end
+    end 
+    return old(unpack(args)) 
+end
+
+
+    else
+        silentAimButton.Text = "SILENT AIM: OFF"
+
+        -- ==========================================
+        -- SILENT AIM DISABLED
+        -- Stop/disable the code here.
+        -- ==========================================
+
+        if silentAimConnection then
+            silentAimConnection:Disconnect()
+            silentAimConnection = nil
         end
     end
-
-    return oldNamecall(self, ...)
 end)
 
--- Keep enough room for all controls.
-content.CanvasSize = UDim2.fromOffset(0, 450)
+fovVisibleButton.Activated:Connect(function()
+    silentAimFOVVisible = not silentAimFOVVisible
+    fovCircle.Visible = silentAimFOVVisible
+
+    if silentAimFOVVisible then
+        fovVisibleButton.Text = "FOV CIRCLE: ON"
+    else
+        fovVisibleButton.Text = "FOV CIRCLE: OFF"
+    end
+end)
 
 --------------------------------------------------
 -- PLAYER MENU
@@ -744,6 +644,62 @@ local function getClosestAcceptedTarget()
 
 	return closestPlayer
 end
+
+--------------------------------------------------
+-- SILENT AIM TARGET SELECTOR
+--------------------------------------------------
+
+-- Returns the closest valid target to the center of the screen
+-- inside the configured FOV. Your weapon/firing code can call
+-- this through the BindableFunction below.
+local function getSilentAimTarget()
+    if not silentAimEnabled then
+        return nil
+    end
+
+    local camera = workspace.CurrentCamera
+    if not camera then return nil end
+
+    local center = Vector2.new(
+        camera.ViewportSize.X * 0.5,
+        camera.ViewportSize.Y * 0.5
+    )
+
+    local closestPlayer = nil
+    local closestDistance = silentAimFOV
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= localPlayer
+            and acceptedPlayers[player]
+            and not deadPlayers[player] then
+
+            local character = player.Character
+            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+            local root = character and character:FindFirstChild("HumanoidRootPart")
+
+            if humanoid and humanoid.Health > 5 and root then
+                local screenPosition, onScreen = camera:WorldToViewportPoint(root.Position)
+
+                if onScreen then
+                    local distance = (Vector2.new(screenPosition.X, screenPosition.Y) - center).Magnitude
+
+                    if distance <= closestDistance then
+                        closestDistance = distance
+                        closestPlayer = player
+                    end
+                end
+            end
+        end
+    end
+
+    return closestPlayer
+end
+
+-- Game-native interface for the weapon system.
+local silentAimFunction = Instance.new("BindableFunction")
+silentAimFunction.Name = "GetSilentAimTarget"
+silentAimFunction.OnInvoke = getSilentAimTarget
+silentAimFunction.Parent = gui
 
 --------------------------------------------------
 -- UPDATE TARGET DISPLAY
@@ -1425,7 +1381,7 @@ local function setMinimized(state)
 				Enum.EasingDirection.Out
 			),
 			{
-				Size = UDim2.fromOffset(350, 500)
+				Size = UDim2.fromOffset(350, 410)
 			}
 		)
 
@@ -1717,17 +1673,13 @@ RunService.RenderStepped:Connect(function(deltaTime)
 		rainbow
 
 	if acceptedMode then
-		-- Re-evaluate every frame so the target is always the
-		-- physically closest eligible accepted player.
-		local closest = getClosestAcceptedTarget()
-
-		if closest ~= lockedPlayer then
-			if closest then
-				setTarget(closest)
-			elseif lockedPlayer then
-				setTarget(nil)
-			end
+		local valid = false
+		if lockedPlayer and acceptedPlayers[lockedPlayer] and isPlayerAlive(lockedPlayer) then
+			local character = lockedPlayer.Character
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			valid = humanoid and humanoid.Health > 5
 		end
+		if not valid then selectClosestAcceptedTarget() end
 	end
 
 	if targetLock then
@@ -1809,12 +1761,3 @@ end
 --------------------------------------------------
 
 updateTargetDisplay()
---------------------------------------------------
--- SCROLL CONTENT SIZE SAFETY
---------------------------------------------------
-task.defer(function()
-    content.CanvasSize = UDim2.fromOffset(
-        0,
-        math.max(450, content.AbsoluteCanvasSize.Y)
-    )
-end)
