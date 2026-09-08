@@ -18,6 +18,8 @@ local crosshairEnabled = true
 local silentAimEnabled = false
 local silentAimFOV = 130
 local silentAimFOVVisible = true
+local predictionEnabled = false
+local predictionAmount = 0.13
 
 -- Accepted-target mode
 local acceptedMode = false
@@ -25,6 +27,8 @@ local acceptedPlayers = {}
 
 -- Current cycling index
 local currentIndex = 0
+local selectAllEnabled = false
+local selectClosestAcceptedTarget
 
 -- Highlight currently selected player
 local currentHighlight = nil
@@ -103,7 +107,7 @@ fovStroke.Parent = fovCircle
 
 local frame = Instance.new("Frame")
 frame.Name = "AimMenu"
-frame.Size = UDim2.fromOffset(350, 410)
+frame.Size = UDim2.fromOffset(300, 360)
 frame.Position = UDim2.new(0, 25, 0.5, -180)
 frame.BackgroundColor3 = Color3.fromRGB(15, 15, 19)
 frame.BorderSizePixel = 0
@@ -119,7 +123,7 @@ frameCorner.Parent = frame
 --------------------------------------------------
 
 local titleBar = Instance.new("Frame")
-titleBar.Size = UDim2.new(1, 0, 0, 48)
+titleBar.Size = UDim2.new(1, 0, 0, 42)
 titleBar.BackgroundColor3 = Color3.fromRGB(9, 9, 12)
 titleBar.BorderSizePixel = 0
 titleBar.Active = true
@@ -134,7 +138,7 @@ title.Size = UDim2.new(1, -65, 1, 0)
 title.Position = UDim2.fromOffset(15, 0)
 title.BackgroundTransparency = 1
 title.Text = "AIM ASSIST"
-title.TextSize = 22
+title.TextSize = 18
 title.Font = Enum.Font.GothamBold
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.TextColor3 = Color3.fromRGB(245, 245, 250)
@@ -146,9 +150,9 @@ title.Parent = titleBar
 
 local minimizeButton = Instance.new("ImageButton")
 minimizeButton.Name = "MinimizeCrosshair"
-minimizeButton.Size = UDim2.fromOffset(38, 38)
+minimizeButton.Size = UDim2.fromOffset(30, 30)
 minimizeButton.AnchorPoint = Vector2.new(0.5, 0.5)
-minimizeButton.Position = UDim2.new(1, -25, 0.5, 0)
+minimizeButton.Position = UDim2.new(1, -21, 0.5, 0)
 minimizeButton.BackgroundColor3 = Color3.fromRGB(5, 5, 7)
 minimizeButton.AutoButtonColor = false
 minimizeButton.Image = ""
@@ -159,7 +163,7 @@ miniCorner.CornerRadius = UDim.new(1, 0)
 miniCorner.Parent = minimizeButton
 
 local miniHorizontal = Instance.new("Frame")
-miniHorizontal.Size = UDim2.fromOffset(20, 2)
+miniHorizontal.Size = UDim2.fromOffset(14, 2)
 miniHorizontal.AnchorPoint = Vector2.new(0.5, 0.5)
 miniHorizontal.Position = UDim2.fromScale(0.5, 0.5)
 miniHorizontal.BorderSizePixel = 0
@@ -167,7 +171,7 @@ miniHorizontal.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 miniHorizontal.Parent = minimizeButton
 
 local miniVertical = Instance.new("Frame")
-miniVertical.Size = UDim2.fromOffset(2, 20)
+miniVertical.Size = UDim2.fromOffset(2, 14)
 miniVertical.AnchorPoint = Vector2.new(0.5, 0.5)
 miniVertical.Position = UDim2.fromScale(0.5, 0.5)
 miniVertical.BorderSizePixel = 0
@@ -178,19 +182,38 @@ miniVertical.Parent = minimizeButton
 -- CONTENT
 --------------------------------------------------
 
-local content = Instance.new("Frame")
+local content = Instance.new("ScrollingFrame")
 content.Name = "Content"
-content.Size = UDim2.new(1, -30, 1, -63)
-content.Position = UDim2.fromOffset(15, 55)
+content.Size = UDim2.new(1, -24, 1, -57)
+content.Position = UDim2.fromOffset(12, 51)
 content.BackgroundTransparency = 1
+content.BorderSizePixel = 0
+content.ScrollBarThickness = 4
+content.ScrollBarImageTransparency = 0.15
+content.CanvasSize = UDim2.fromOffset(0, 0)
+content.ScrollingDirection = Enum.ScrollingDirection.Y
+content.Active = true
 content.Parent = frame
+
+local contentPadding = Instance.new("UIPadding")
+contentPadding.PaddingRight = UDim.new(0, 4)
+contentPadding.Parent = content
+
+local contentLayout = Instance.new("UIListLayout")
+contentLayout.Padding = UDim.new(0, 7)
+contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+contentLayout.Parent = content
+
+contentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    content.CanvasSize = UDim2.fromOffset(0, contentLayout.AbsoluteContentSize.Y + 12)
+end)
 
 --------------------------------------------------
 -- CURRENT TARGET DISPLAY
 --------------------------------------------------
 
 local targetDisplay = Instance.new("Frame")
-targetDisplay.Size = UDim2.new(1, 0, 0, 48)
+targetDisplay.Size = UDim2.new(1, 0, 0, 38)
 targetDisplay.BackgroundColor3 = Color3.fromRGB(25, 25, 31)
 targetDisplay.BorderSizePixel = 0
 targetDisplay.Parent = content
@@ -200,10 +223,10 @@ targetDisplayCorner.CornerRadius = UDim.new(0, 8)
 targetDisplayCorner.Parent = targetDisplay
 
 local leftArrow = Instance.new("TextButton")
-leftArrow.Size = UDim2.fromOffset(45, 42)
+leftArrow.Size = UDim2.fromOffset(36, 32)
 leftArrow.Position = UDim2.fromOffset(3, 3)
 leftArrow.Text = "←"
-leftArrow.TextSize = 25
+leftArrow.TextSize = 19
 leftArrow.Font = Enum.Font.GothamBold
 leftArrow.TextColor3 = Color3.fromRGB(235, 235, 240)
 leftArrow.BackgroundColor3 = Color3.fromRGB(31, 31, 38)
@@ -216,10 +239,10 @@ leftCorner.CornerRadius = UDim.new(0, 7)
 leftCorner.Parent = leftArrow
 
 local rightArrow = Instance.new("TextButton")
-rightArrow.Size = UDim2.fromOffset(45, 42)
-rightArrow.Position = UDim2.new(1, -48, 0, 3)
+rightArrow.Size = UDim2.fromOffset(36, 32)
+rightArrow.Position = UDim2.new(1, -39, 0, 3)
 rightArrow.Text = "→"
-rightArrow.TextSize = 25
+rightArrow.TextSize = 19
 rightArrow.Font = Enum.Font.GothamBold
 rightArrow.TextColor3 = Color3.fromRGB(235, 235, 240)
 rightArrow.BackgroundColor3 = Color3.fromRGB(31, 31, 38)
@@ -232,11 +255,11 @@ rightCorner.CornerRadius = UDim.new(0, 7)
 rightCorner.Parent = rightArrow
 
 local targetName = Instance.new("TextLabel")
-targetName.Size = UDim2.new(1, -100, 1, 0)
-targetName.Position = UDim2.fromOffset(50, 0)
+targetName.Size = UDim2.new(1, -82, 1, 0)
+targetName.Position = UDim2.fromOffset(41, 0)
 targetName.BackgroundTransparency = 1
 targetName.Text = "Target: None"
-targetName.TextSize = 16
+targetName.TextSize = 13
 targetName.Font = Enum.Font.GothamBold
 targetName.TextColor3 = Color3.fromRGB(225, 225, 230)
 targetName.TextXAlignment = Enum.TextXAlignment.Center
@@ -249,10 +272,9 @@ targetName.Parent = targetDisplay
 local function createButton(text, y)
 
 	local button = Instance.new("TextButton")
-	button.Size = UDim2.new(1, 0, 0, 42)
-	button.Position = UDim2.fromOffset(0, y)
+	button.Size = UDim2.new(1, 0, 0, 34)
 	button.Text = text
-	button.TextSize = 16
+	button.TextSize = 13
 	button.Font = Enum.Font.GothamBold
 	button.TextColor3 = Color3.fromRGB(240, 240, 245)
 	button.BackgroundColor3 = Color3.fromRGB(31, 31, 38)
@@ -271,24 +293,24 @@ end
 -- OPTIONS
 --------------------------------------------------
 
-local selectButton = createButton("SELECT PLAYERS", 53)
-local aimButton = createButton("AIM: OFF", 103)
-local acceptedButton = createButton("ACCEPTED TARGETS: OFF", 153)
-local crosshairButton = createButton("CROSSHAIR: ON", 203)
+local selectButton = createButton("SELECT PLAYERS", 0)
+local selectAllButton = createButton("SELECT ALL: OFF", 0)
+local aimButton = createButton("AIM: OFF", 0)
+local acceptedButton = createButton("ACCEPTED TARGETS: OFF", 0)
+local crosshairButton = createButton("CROSSHAIR: ON", 0)
 
 --------------------------------------------------
 -- SILENT AIM SECTION
 --------------------------------------------------
 
-local silentAimButton = createButton("SILENT AIM: OFF", 253)
-local fovVisibleButton = createButton("FOV CIRCLE: ON", 303)
+local silentAimButton = createButton("SILENT AIM: OFF", 0)
+local fovVisibleButton = createButton("FOV CIRCLE: ON", 0)
 
 local silentAimFOVLabel = Instance.new("TextLabel")
-silentAimFOVLabel.Size = UDim2.new(1, 0, 0, 22)
-silentAimFOVLabel.Position = UDim2.fromOffset(0, 353)
+silentAimFOVLabel.Size = UDim2.new(1, 0, 0, 18)
 silentAimFOVLabel.BackgroundTransparency = 1
 silentAimFOVLabel.Text = "SILENT AIM FOV: 130"
-silentAimFOVLabel.TextSize = 14
+silentAimFOVLabel.TextSize = 12
 silentAimFOVLabel.Font = Enum.Font.GothamBold
 silentAimFOVLabel.TextColor3 = Color3.fromRGB(225, 225, 230)
 silentAimFOVLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -296,8 +318,7 @@ silentAimFOVLabel.Parent = content
 
 local silentAimFOVBar = Instance.new("Frame")
 silentAimFOVBar.Name = "SilentAimFOVBar"
-silentAimFOVBar.Size = UDim2.new(1, 0, 0, 8)
-silentAimFOVBar.Position = UDim2.fromOffset(0, 379)
+silentAimFOVBar.Size = UDim2.new(1, 0, 0, 7)
 silentAimFOVBar.BackgroundColor3 = Color3.fromRGB(31, 31, 38)
 silentAimFOVBar.BorderSizePixel = 0
 silentAimFOVBar.Active = true
@@ -310,7 +331,7 @@ silentAimFOVFill.BorderSizePixel = 0
 silentAimFOVFill.Parent = silentAimFOVBar
 
 local silentAimFOVKnob = Instance.new("Frame")
-silentAimFOVKnob.Size = UDim2.fromOffset(16, 16)
+silentAimFOVKnob.Size = UDim2.fromOffset(14, 14)
 silentAimFOVKnob.AnchorPoint = Vector2.new(0.5, 0.5)
 silentAimFOVKnob.Position = UDim2.new(silentAimFOV / 360, 0, 0.5, 0)
 silentAimFOVKnob.BackgroundColor3 = Color3.fromRGB(235, 235, 240)
@@ -363,6 +384,88 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
+-- PREDICTION
+local predictionButton = createButton("PREDICTION: OFF", 0)
+
+local predictionLabel = Instance.new("TextLabel")
+predictionLabel.Size = UDim2.new(1, 0, 0, 18)
+predictionLabel.BackgroundTransparency = 1
+predictionLabel.Text = "PREDICTION: 0.13"
+predictionLabel.TextSize = 12
+predictionLabel.Font = Enum.Font.GothamBold
+predictionLabel.TextColor3 = Color3.fromRGB(225, 225, 230)
+predictionLabel.TextXAlignment = Enum.TextXAlignment.Left
+predictionLabel.Parent = content
+
+local predictionBar = Instance.new("Frame")
+predictionBar.Size = UDim2.new(1, 0, 0, 7)
+predictionBar.BackgroundColor3 = Color3.fromRGB(31, 31, 38)
+predictionBar.BorderSizePixel = 0
+predictionBar.Active = true
+predictionBar.Parent = content
+
+local predictionFill = Instance.new("Frame")
+predictionFill.Size = UDim2.new(predictionAmount / 0.5, 0, 1, 0)
+predictionFill.BackgroundColor3 = Color3.fromRGB(70, 170, 95)
+predictionFill.BorderSizePixel = 0
+predictionFill.Parent = predictionBar
+
+local predictionKnob = Instance.new("Frame")
+predictionKnob.Size = UDim2.fromOffset(14, 14)
+predictionKnob.AnchorPoint = Vector2.new(0.5, 0.5)
+predictionKnob.Position = UDim2.new(predictionAmount / 0.5, 0, 0.5, 0)
+predictionKnob.BackgroundColor3 = Color3.fromRGB(235, 235, 240)
+predictionKnob.BorderSizePixel = 0
+predictionKnob.Active = true
+predictionKnob.Parent = predictionBar
+
+local predictionDragging = false
+local predictionTouch = nil
+
+local function setPredictionFromX(x)
+    local width = predictionBar.AbsoluteSize.X
+    if width <= 0 then return end
+    local relative = math.clamp((x - predictionBar.AbsolutePosition.X) / width, 0, 1)
+    predictionAmount = math.floor(relative * 0.5 * 100 + 0.5) / 100
+    predictionLabel.Text = "PREDICTION: " .. string.format("%.2f", predictionAmount)
+    predictionFill.Size = UDim2.new(predictionAmount / 0.5, 0, 1, 0)
+    predictionKnob.Position = UDim2.new(predictionAmount / 0.5, 0, 0.5, 0)
+end
+
+predictionButton.Activated:Connect(function()
+    predictionEnabled = not predictionEnabled
+    predictionButton.Text = predictionEnabled and "PREDICTION: ON" or "PREDICTION: OFF"
+end)
+
+predictionBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        predictionDragging = true
+        setPredictionFromX(input.Position.X)
+    elseif input.UserInputType == Enum.UserInputType.Touch then
+        predictionDragging = true
+        predictionTouch = input
+        setPredictionFromX(input.Position.X)
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if not predictionDragging then return end
+    if input.UserInputType == Enum.UserInputType.MouseMovement then
+        setPredictionFromX(input.Position.X)
+    elseif input.UserInputType == Enum.UserInputType.Touch and input == predictionTouch then
+        setPredictionFromX(input.Position.X)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        predictionDragging = false
+    elseif input.UserInputType == Enum.UserInputType.Touch and input == predictionTouch then
+        predictionDragging = false
+        predictionTouch = nil
+    end
+end)
+
 local silentAimConnection = nil
 
 silentAimButton.Activated:Connect(function()
@@ -394,7 +497,11 @@ end
 local function thingidk(p)
     local h = p:FindFirstChild("Head")
     local root = p:FindFirstChild("HumanoidRootPart")
-    return (h and root) and (h.Position + (root.Velocity * 0)) or (h and h.Position)
+    if not h then return nil end
+    if predictionEnabled and root then
+        return h.Position + (root.AssemblyLinearVelocity * predictionAmount)
+    end
+    return h.Position
 end
 
 local function idk() 
@@ -460,12 +567,12 @@ end)
 
 local targetMenu = Instance.new("ScrollingFrame")
 targetMenu.Name = "TargetMenu"
-targetMenu.Size = UDim2.fromOffset(300, 280)
+targetMenu.Size = UDim2.fromOffset(260, 230)
 targetMenu.Position = UDim2.new(0, 390, 0.5, -140)
 targetMenu.BackgroundColor3 = Color3.fromRGB(15, 15, 19)
 targetMenu.BorderSizePixel = 0
 targetMenu.Visible = false
-targetMenu.ScrollBarThickness = 5
+targetMenu.ScrollBarThickness = 4
 targetMenu.CanvasSize = UDim2.fromOffset(0, 0)
 targetMenu.Parent = gui
 
@@ -946,7 +1053,7 @@ local function refreshTargets()
 
 			local button = Instance.new("TextButton")
 			button.Name = targetPlayer.Name
-			button.Size = UDim2.new(1, 0, 0, 50)
+			button.Size = UDim2.new(1, 0, 0, 40)
 			button.Text = ""
 
 			if isAccepted then
@@ -975,8 +1082,8 @@ local function refreshTargets()
 
 			local avatar = Instance.new("ImageLabel")
 			avatar.Name = "Avatar"
-			avatar.Size = UDim2.fromOffset(40, 40)
-			avatar.Position = UDim2.fromOffset(5, 5)
+			avatar.Size = UDim2.fromOffset(32, 32)
+			avatar.Position = UDim2.fromOffset(4, 4)
 			avatar.BackgroundTransparency = 1
 			avatar.Parent = button
 
@@ -1007,11 +1114,11 @@ local function refreshTargets()
 			--------------------------------------------------
 
 			local nameLabel = Instance.new("TextLabel")
-			nameLabel.Size = UDim2.new(1, -60, 1, 0)
-			nameLabel.Position = UDim2.fromOffset(55, 0)
+			nameLabel.Size = UDim2.new(1, -48, 1, 0)
+			nameLabel.Position = UDim2.fromOffset(45, 0)
 			nameLabel.BackgroundTransparency = 1
 			nameLabel.Text = targetPlayer.DisplayName
-			nameLabel.TextSize = 15
+			nameLabel.TextSize = 13
 			nameLabel.Font = Enum.Font.Gotham
 			nameLabel.TextColor3 =
 				Color3.fromRGB(235, 235, 240)
@@ -1076,6 +1183,24 @@ local function refreshTargets()
 
 	end)
 end
+
+selectAllButton.Activated:Connect(function()
+    selectAllEnabled = not selectAllEnabled
+    selectAllButton.Text = selectAllEnabled and "SELECT ALL: ON" or "SELECT ALL: OFF"
+
+    if selectAllEnabled then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= localPlayer then
+                acceptedPlayers[player] = true
+            end
+        end
+    end
+
+    refreshTargets()
+    if acceptedMode then
+        selectClosestAcceptedTarget()
+    end
+end)
 
 --------------------------------------------------
 -- SELECT PLAYERS
@@ -1367,7 +1492,7 @@ local function setMinimized(state)
 				Enum.EasingDirection.Out
 			),
 			{
-				Size = UDim2.fromOffset(350, 48)
+				Size = UDim2.fromOffset(300, 42)
 			}
 		):Play()
 
@@ -1381,7 +1506,7 @@ local function setMinimized(state)
 				Enum.EasingDirection.Out
 			),
 			{
-				Size = UDim2.fromOffset(350, 410)
+				Size = UDim2.fromOffset(300, 360)
 			}
 		)
 
@@ -1409,7 +1534,7 @@ end)
 -- AUTOMATIC ACCEPTED-TARGET SELECTION
 --------------------------------------------------
 
-local function selectClosestAcceptedTarget()
+selectClosestAcceptedTarget = function()
 	local closest = getClosestAcceptedTarget()
 	if closest then setTarget(closest) end
 end
@@ -1534,6 +1659,27 @@ local function watchPlayer(player)
 	end
 
 end
+
+--------------------------------------------------
+-- PLAYER JOIN
+--------------------------------------------------
+
+Players.PlayerAdded:Connect(function(player)
+    if player == localPlayer then return end
+
+    watchPlayer(player)
+
+    if selectAllEnabled then
+        acceptedPlayers[player] = true
+    end
+
+    task.defer(function()
+        refreshTargets()
+        if acceptedMode and selectAllEnabled then
+            selectClosestAcceptedTarget()
+        end
+    end)
+end)
 
 --------------------------------------------------
 -- AIM UPDATE
@@ -1688,19 +1834,6 @@ RunService.RenderStepped:Connect(function(deltaTime)
 
 end)
 
---------------------------------------------------
--- PLAYER JOIN
---------------------------------------------------
-
-Players.PlayerAdded:Connect(function(player)
-
-	watchPlayer(player)
-
-	if targetMenu.Visible then
-		refreshTargets()
-	end
-
-end)
 
 --------------------------------------------------
 -- PLAYER LEAVES
